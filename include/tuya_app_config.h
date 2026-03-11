@@ -20,15 +20,15 @@ extern "C" {
 
 // https://pbt.tuya.com/s?p=dd46368ae3840e54f018b2c45dc1550b&u=c38c8fc0a5d14c4f66cae9f0cfcb2a24&t=2
 #ifndef TUYA_PRODUCT_ID
-#define TUYA_PRODUCT_ID "xxxxxxxxxxxxxxxx"
+#define TUYA_PRODUCT_ID "9inb01mvjqh5zhhr"
 #endif
 
 // https://platform.tuya.com/purchase/index?type=6
 #ifndef TUYA_OPENSDK_UUID
-#define TUYA_OPENSDK_UUID    "uuidxxxxxxxxxxxxxxxx"             // Please change the correct uuid
+#define TUYA_OPENSDK_UUID    "uuid372137b7e155c1c5"             // Please change the correct uuid
 #endif
 #ifndef TUYA_OPENSDK_AUTHKEY
-#define TUYA_OPENSDK_AUTHKEY "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Please change the correct authkey
+#define TUYA_OPENSDK_AUTHKEY "pRCXUHOCydL28PVqr597rBVFNo1FxTCm" // Please change the correct authkey
 #endif
 
 // IM configuration
@@ -38,10 +38,10 @@ extern "C" {
 #endif
 
 #ifndef IM_SECRET_FS_APP_ID
-#define IM_SECRET_FS_APP_ID         ""
+#define IM_SECRET_FS_APP_ID         "cli_a9224d3917395bd8"
 #endif
 #ifndef IM_SECRET_FS_APP_SECRET
-#define IM_SECRET_FS_APP_SECRET     ""
+#define IM_SECRET_FS_APP_SECRET     "CjoAUZAmSsjNMKklOIeRedD3wijFniA2"
 #endif
 
 #ifndef IM_SECRET_TG_TOKEN
@@ -53,6 +53,11 @@ extern "C" {
 #endif
 #ifndef IM_SECRET_DC_CHANNEL_ID
 #define IM_SECRET_DC_CHANNEL_ID     ""
+#endif
+
+/* Enable battery icon in WeChat UI (status bar); requires app_battery module */
+#ifndef ENABLE_APP_BATTERY
+#define ENABLE_APP_BATTERY 1
 #endif
 
 #ifdef __cplusplus

@@ -45,9 +45,12 @@ static OPERATE_RET __tool_get_current_time(const MCP_PROPERTY_LIST_T *properties
         return OPRT_COM_ERROR;
     }
 
-    /* Convert to broken-down time for human-readable output */
+    /* Convert to local time (with timezone) for human-readable output */
     POSIX_TM_S tm_info;
-    tal_time_get(&tm_info);
+    memset(&tm_info, 0, sizeof(tm_info));
+    if (tal_time_get_local_time_custom(0, &tm_info) != OPRT_OK) {
+        tal_time_get(&tm_info);
+    }
 
     char result[256];
     snprintf(result, sizeof(result),

@@ -40,6 +40,7 @@
 #endif
 
 #include "board_com_api.h"
+#include "button_manege.h"
 
 #include "ducky_claw_chat.h"
 #include "reset_netcfg.h"
@@ -48,6 +49,8 @@
 #include "tools_register.h"
 #include "ws_server.h"
 #include "agent_loop.h"
+#include "tkl_gpio.h"
+#include "app_battery.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
 #include "qrencode_print.h"
@@ -271,6 +274,16 @@ bool user_network_check(void)
     netmgr_conn_get(NETCONN_AUTO, NETCONN_CMD_STATUS, &status);
     return status == NETMGR_LINK_DOWN ? false : true;
 }
+void power_on_off(void)
+{
+    TUYA_GPIO_BASE_CFG_T gpio_cfg;
+
+    gpio_cfg.mode = TUYA_GPIO_PUSH_PULL;
+    gpio_cfg.direct = TUYA_GPIO_OUTPUT;
+    gpio_cfg.level = TUYA_GPIO_LEVEL_HIGH;
+    tkl_gpio_init(TUYA_GPIO_NUM_9, &gpio_cfg);
+    tkl_gpio_write(TUYA_GPIO_NUM_9, TUYA_GPIO_LEVEL_HIGH);
+}
 
 void user_main(void)
 {
@@ -355,6 +368,20 @@ void user_main(void)
     ret = ducky_claw_chat_init();
     if (ret != OPRT_OK) {
         PR_ERR("ducky_claw_chat_init failed rt:%d", ret);
+    }
+
+    power_on_off();
+    #if defined(ENABLE_APP_BATTERY) && (ENABLE_APP_BATTERY == 1)
+    ret = app_battery_init();
+    if (ret != OPRT_OK) {
+        PR_ERR("app_battery_init failed");
+    }
+    PR_ERR("app_battery_init success");
+    #endif
+    
+    ret = voice_manager_buttons_init();
+    if (ret != OPRT_OK) {
+        PR_ERR("voice_manager_buttons_init failed rt:%d", ret);
     }
 
     ret = app_im_init();

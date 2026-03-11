@@ -116,6 +116,17 @@ extern "C" {
 ***********************************************************/
 
 /**
+ * @brief Create directory and all parent path components (mkdir -p style)
+ *
+ * Creates each path prefix in order so that the full path exists.
+ * Ignores "already exists" errors from the underlying FS.
+ *
+ * @param path Full directory path (e.g. CLAW_CONFIG_DIR or CLAW_SKILLS_DIR)
+ * @return OPERATE_RET OPRT_OK on success; logs and returns last error on failure
+ */
+OPERATE_RET claw_fs_mkdir_p(const char *path);
+
+/**
  * @brief Initialize filesystem
  *
  * Mounts SD card if CLAW_USE_SDCARD is enabled.

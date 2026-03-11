@@ -256,10 +256,15 @@ OPERATE_RET skill_loader_init(void)
 {
     BOOL_T exists = FALSE;
     if (claw_fs_is_exist(CLAW_SKILLS_DIR, &exists) != OPRT_OK || !exists) {
-        int mk_rt = claw_fs_mkdir(CLAW_SKILLS_DIR);
+        /* Create directory and parents (e.g. /spiffs then /spiffs/skills) */
+        int mk_rt = claw_fs_mkdir_p(CLAW_SKILLS_DIR);
         if (mk_rt != OPRT_OK) {
-            PR_ERR("mkdir failed: %s rt=%d", CLAW_SKILLS_DIR, mk_rt);
-            return mk_rt;
+            (void)claw_fs_is_exist(CLAW_SKILLS_DIR, &exists);
+            if (!exists) {
+                PR_ERR("mkdir_p failed: %s rt=%d", CLAW_SKILLS_DIR, mk_rt);
+                return mk_rt;
+            }
+            /* Dir exists (e.g. created by another path); continue */
         }
     }
 

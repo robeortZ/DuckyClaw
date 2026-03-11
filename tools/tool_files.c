@@ -357,6 +357,40 @@ static OPERATE_RET __create_default_file(const char *path, const char *default_c
     return OPRT_OK;
 }
 
+#define MKDIR_P_PATH_MAX  128
+
+/**
+ * @brief Create directory and all parent path components (mkdir -p style)
+ */
+OPERATE_RET claw_fs_mkdir_p(const char *path)
+{
+    if (!path || path[0] == '\0') {
+        return OPRT_INVALID_PARM;
+    }
+    size_t len = strlen(path);
+    if (len >= MKDIR_P_PATH_MAX) {
+        PR_ERR("claw_fs_mkdir_p: path too long");
+        return OPRT_INVALID_PARM;
+    }
+    char buf[MKDIR_P_PATH_MAX];
+    memcpy(buf, path, len + 1);
+    OPERATE_RET last_rt = OPRT_OK;
+    for (size_t i = 1; i < len; i++) {
+        if (buf[i] != '/') {
+            continue;
+        }
+        buf[i] = '\0';
+        int rt = claw_fs_mkdir(buf);
+        buf[i] = '/';
+        if (rt != OPRT_OK) {
+            last_rt = (OPERATE_RET)rt;
+            /* Ignore "already exists" / other errors for intermediate path */
+        }
+    }
+    last_rt = (OPERATE_RET)claw_fs_mkdir(path);
+    return last_rt;
+}
+
 /**
  * @brief Initialize filesystem
  *
@@ -391,8 +425,12 @@ OPERATE_RET tool_files_fs_init(void)
     PR_DEBUG("SD card mounted at %s", CLAW_FS_MOUNT_PATH);
 #endif
 
-    /* Create config directory */
-    claw_fs_mkdir(CLAW_CONFIG_DIR);
+    /* Create config directory and parents (e.g. /spiffs then /spiffs/config) */
+    rt = claw_fs_mkdir_p(CLAW_CONFIG_DIR);
+    if (rt != OPRT_OK) {
+        PR_ERR("claw_fs_mkdir_p %s failed: %d", CLAW_CONFIG_DIR, rt);
+        /* Continue to try creating default files; some FS create path on first write */
+    }
 
     /* Create default config files */
     TUYA_CALL_ERR_LOG(
