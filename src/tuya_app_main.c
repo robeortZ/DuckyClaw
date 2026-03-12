@@ -51,6 +51,7 @@
 #include "agent_loop.h"
 #include "tkl_gpio.h"
 #include "app_battery.h"
+#include "tuya_error_code.h"
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
 #include "qrencode_print.h"
@@ -274,8 +275,31 @@ bool user_network_check(void)
     netmgr_conn_get(NETCONN_AUTO, NETCONN_CMD_STATUS, &status);
     return status == NETMGR_LINK_DOWN ? false : true;
 }
-void power_on_off(void)
+
+void __power_on_off_irq_cb(void *arg)
 {
+    TUYA_GPIO_LEVEL_E level=TUYA_GPIO_LEVEL_NONE;
+    static BOOL_T is_power_on = FALSE;
+    //delay 500ms to remove key bounce
+    tal_system_sleep(500);
+    tkl_gpio_read(TUYA_GPIO_NUM_8,&level);
+    //low level is power off
+    if (level == TUYA_GPIO_LEVEL_LOW && is_power_on == TRUE) {
+        PR_NOTICE("power off");
+        tkl_gpio_write(TUYA_GPIO_NUM_9, TUYA_GPIO_LEVEL_LOW);      
+        is_power_on = FALSE;
+    } else {
+        // tkl_gpio_write(TUYA_GPIO_NUM_9, TUYA_GPIO_LEVEL_HIGH);
+        PR_NOTICE("power on");
+        is_power_on = TRUE;
+    }
+    return;
+}
+
+OPERATE_RET power_on_off_key_init(void)
+{
+    // PWR_ON Pin 9
+    OPERATE_RET rt = OPRT_OK;
     TUYA_GPIO_BASE_CFG_T gpio_cfg;
 
     gpio_cfg.mode = TUYA_GPIO_PUSH_PULL;
@@ -283,11 +307,30 @@ void power_on_off(void)
     gpio_cfg.level = TUYA_GPIO_LEVEL_HIGH;
     tkl_gpio_init(TUYA_GPIO_NUM_9, &gpio_cfg);
     tkl_gpio_write(TUYA_GPIO_NUM_9, TUYA_GPIO_LEVEL_HIGH);
+
+    //PWR_MCU Pin 8
+    TUYA_GPIO_BASE_CFG_T in_pin_cfg = {
+        .mode   = TUYA_GPIO_PULLUP,
+        .direct = TUYA_GPIO_INPUT,
+    };
+    rt = tkl_gpio_init(TUYA_GPIO_NUM_8, &in_pin_cfg);
+
+    TUYA_GPIO_IRQ_T irq_cfg = {
+        .mode = TUYA_GPIO_IRQ_FALL,
+        .cb = __power_on_off_irq_cb,
+        .arg = NULL
+    };
+    TUYA_CALL_ERR_RETURN(tkl_gpio_irq_init(TUYA_GPIO_NUM_8, &irq_cfg));
+    TUYA_CALL_ERR_RETURN(tkl_gpio_irq_enable(TUYA_GPIO_NUM_8));
+
+    return rt;
 }
 
 void user_main(void)
 {
     int ret = OPRT_OK;
+
+    power_on_off_key_init();
 
     //! open iot development kit runtim init
 #if defined(ENABLE_EXT_RAM) && (ENABLE_EXT_RAM == 1)
@@ -370,7 +413,6 @@ void user_main(void)
         PR_ERR("ducky_claw_chat_init failed rt:%d", ret);
     }
 
-    power_on_off();
     #if defined(ENABLE_APP_BATTERY) && (ENABLE_APP_BATTERY == 1)
     ret = app_battery_init();
     if (ret != OPRT_OK) {

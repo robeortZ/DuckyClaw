@@ -20,15 +20,16 @@ extern "C" {
 
 // https://pbt.tuya.com/s?p=dd46368ae3840e54f018b2c45dc1550b&u=c38c8fc0a5d14c4f66cae9f0cfcb2a24&t=2
 #ifndef TUYA_PRODUCT_ID
-#define TUYA_PRODUCT_ID "9inb01mvjqh5zhhr"
+#define TUYA_PRODUCT_ID "alon7qgyjj8yus74"
 #endif
+//	
 
 // https://platform.tuya.com/purchase/index?type=6
 #ifndef TUYA_OPENSDK_UUID
-#define TUYA_OPENSDK_UUID    "uuid372137b7e155c1c5"             // Please change the correct uuid
+#define TUYA_OPENSDK_UUID    "uuid09dd35711b436839"             // Please change the correct uuid
 #endif
 #ifndef TUYA_OPENSDK_AUTHKEY
-#define TUYA_OPENSDK_AUTHKEY "pRCXUHOCydL28PVqr597rBVFNo1FxTCm" // Please change the correct authkey
+#define TUYA_OPENSDK_AUTHKEY "fWCho1tGuxgLNonWCW1ZmwWRXqs4zBHX" // Please change the correct authkey
 #endif
 
 // IM configuration

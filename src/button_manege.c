@@ -6,6 +6,7 @@
 #include "ai_chat_main.h"
 #include "tkl_gpio.h"
 #include "tuya_cloud_types.h"
+#include "tuya_iot.h"
 #include <string.h>
 #endif
 
@@ -23,6 +24,11 @@ static void __volume_button_cb(char *name, TDL_BUTTON_TOUCH_EVENT_E event, void 
         //power_on_off();
         tkl_gpio_write(TUYA_GPIO_NUM_9, TUYA_GPIO_LEVEL_LOW);
         PR_NOTICE("power off");
+        return;
+    }
+    if (event == TDL_BUTTON_LONG_PRESS_START) {
+        tuya_iot_reset(tuya_iot_client_get());
+        PR_NOTICE("reset");
         return;
     }
 
@@ -68,12 +74,14 @@ OPERATE_RET voice_manager_buttons_init(void)
     TUYA_CALL_ERR_RETURN(tdl_button_create(BUTTON_NAME_2, &button_cfg, &sg_button_hdl_2));
     tdl_button_event_register(sg_button_hdl_2, TDL_BUTTON_PRESS_SINGLE_CLICK, __volume_button_cb);
     tdl_button_event_register(sg_button_hdl_2, TDL_BUTTON_PRESS_DOUBLE_CLICK, __volume_button_cb);
+    tdl_button_event_register(sg_button_hdl_2, TDL_BUTTON_LONG_PRESS_START, __volume_button_cb);
 #endif
 
 #if defined(BUTTON_NAME_3)
     TUYA_CALL_ERR_RETURN(tdl_button_create(BUTTON_NAME_3, &button_cfg, &sg_button_hdl_3));
     tdl_button_event_register(sg_button_hdl_3, TDL_BUTTON_PRESS_SINGLE_CLICK, __volume_button_cb);
     tdl_button_event_register(sg_button_hdl_3, TDL_BUTTON_PRESS_DOUBLE_CLICK, __volume_button_cb);
+    tdl_button_event_register(sg_button_hdl_3, TDL_BUTTON_LONG_PRESS_START, __volume_button_cb);
 #endif
 
     return rt;
