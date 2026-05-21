@@ -19,7 +19,7 @@ This project is build on top of the the TuyaOpen C SDK, which offers flexable cr
 
 
 
-![GitHub Repo Banner](https://images.tuyacn.com/fe-static/docs/img/210f532a-0bb1-4ca5-9037-f5488958a709.jpg)
+![GitHub Repo Banner](bg.png)
 
 
 **Your autonomous AI companion.** Simplify Hardware Integration, Unlock Infinite Control Possibilities
