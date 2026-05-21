@@ -54,6 +54,13 @@
 #include "ws_server.h"
 #include "acp_client.h"
 #include "agent_loop.h"
+#include "dp_notification_sync.h"
+#include "tool_files.h"
+#include "cron_service.h"
+
+#if defined(ENABLE_LIBLVGL) && (ENABLE_LIBLVGL == 1)
+#include "ducky_notice_popup.h"
+#endif
 
 #if defined(ENABLE_QRCODE) && (ENABLE_QRCODE == 1)
 #include "qrencode_print.h"
@@ -70,6 +77,7 @@ tuya_iot_license_t license;
 #endif
 
 #define DPID_VOLUME 3
+#define DPID_NOTIFICATION 101
 
 static uint8_t _need_reset = 0;
 
@@ -135,6 +143,29 @@ OPERATE_RET audio_dp_obj_proc(dp_obj_recv_t *dpobj)
             snprintf(volume_str, sizeof(volume_str), "%s%d", VOLUME, volume);
             ai_ui_disp_msg(AI_UI_DISP_NOTIFICATION, (uint8_t *)volume_str, strlen(volume_str));
 #endif
+            break;
+        }
+        //DP 101，type:string,用于展示
+        /*字段解释（用竖线分隔）：
+        类型：scheduled(定时任务)、todo(待办)、notice(提醒)
+        ID：唯一标识符
+        时间：定时时间（格式：YYYY-MM-DD HH:mm），待办可为空
+        内容：任务/待办/提醒的具体内容
+        完成状态：仅todo类型需要，true/false，其他类型为空
+        例如：scheduled|unique_id_1|2026-03-28 9:00|每日晨会|
+        todo|unique_id_2||购买商品|false
+        notice|unique_id_3|2026-03-28 8:00|记得服药|
+        */
+        case DPID_NOTIFICATION: {
+            const char *raw = dp->value.dp_str;
+
+            if (raw) {
+                PR_DEBUG("notification dp_raw:%s", raw);
+                ducky_dp_notification_sync(raw);
+#if defined(ENABLE_LIBLVGL) && (ENABLE_LIBLVGL == 1)
+                ducky_notice_handle_dp_string(raw);
+#endif
+            }
             break;
         }
         default:
@@ -348,7 +379,8 @@ void user_main(void)
     tuya_authorize_init();
 
     reset_netconfig_start();
-
+    
+    
     if (OPRT_OK != tuya_authorize_read(&license)) {
         license.uuid = TUYA_OPENSDK_UUID;
         license.authkey = TUYA_OPENSDK_AUTHKEY;
@@ -392,10 +424,24 @@ void user_main(void)
         PR_ERR("board_register_hardware failed rt:%d", ret);
     }
 
+    /* Mount FS / load cron before UI so wallpapers and lists work on first frame */
+    // ret = tool_files_fs_init();
+    // if (ret != OPRT_OK) {
+    //     PR_ERR("tool_files_fs_init failed rt:%d", ret);
+    // }
+    // ret = cron_service_init();
+    // if (ret != OPRT_OK) {
+    //     PR_ERR("cron_service_init failed rt:%d", ret);
+    // }
+
     ret = ducky_claw_chat_init();
     if (ret != OPRT_OK) {
         PR_ERR("ducky_claw_chat_init failed rt:%d", ret);
     }
+    extern OPERATE_RET __button2_app_open_button(void);
+    __button2_app_open_button();
+
+    /* QMI8658: initialized in board_register_hardware() for WAVESHARE_T5AI_TOUCH_AMOLED_1_75 */
 
     ret = app_im_init();
     if (ret != OPRT_OK) {

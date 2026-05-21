@@ -470,7 +470,11 @@ OPERATE_RET cron_add_job(cron_job_t *job)
         return OPRT_COM_ERROR;
     }
 
-    cron_generate_id(job->id, sizeof(job->id));
+    if (job->id[0] == '\0') {
+        cron_generate_id(job->id, sizeof(job->id));
+    } else {
+        job->id[sizeof(job->id) - 1] = '\0';
+    }
 
     job->enabled  = true;
     job->last_run = 0;

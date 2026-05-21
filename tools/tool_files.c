@@ -29,7 +29,7 @@
 /***********************************************************
 ***********************variable define**********************
 ***********************************************************/
-
+static int s_tool_files_fs_inited = 0;
 
 /***********************************************************
 ***********************function define**********************
@@ -599,6 +599,11 @@ static OPERATE_RET __create_default_file(const char *path, const char *default_c
  */
 OPERATE_RET tool_files_fs_init(void)
 {
+    if (s_tool_files_fs_inited) {
+        return OPRT_OK;
+    }
+
+
     OPERATE_RET rt = OPRT_OK;
 
 #if (CLAW_USE_SDCARD == 1)
@@ -636,6 +641,7 @@ OPERATE_RET tool_files_fs_init(void)
                               "# Soul Config\n"));
 
     PR_DEBUG("Filesystem initialized, root: %s", CLAW_FS_ROOT_PATH);
+    s_tool_files_fs_inited = 1;
     return OPRT_OK;
 }
 

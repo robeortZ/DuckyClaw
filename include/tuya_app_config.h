@@ -1,6 +1,6 @@
 /**
  * @file tuya_app_config.h
- * @brief tuya_app_config module is used to 
+ * @brief tuya_app_config module is used to
  * @version 0.1
  * @copyright Copyright (c) 2021-2026 Tuya Inc. All Rights Reserved.
  */
@@ -25,15 +25,13 @@ extern "C" {
 
 // https://platform.tuya.com/purchase/index?type=6
 #ifndef TUYA_OPENSDK_UUID
-#define TUYA_OPENSDK_UUID    "uuidxxxxxxxxxxxxxxxx"             // Please change the correct uuid
+#define TUYA_OPENSDK_UUID    "uuidxxxxxxxxxxxxxxxx"
 #endif
 #ifndef TUYA_OPENSDK_AUTHKEY
-#define TUYA_OPENSDK_AUTHKEY "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Please change the correct authkey
+#define TUYA_OPENSDK_AUTHKEY "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 #endif
 
-// IM configuration
-// feishu | telegram | discord | weixin
-// NOTE: ESP32-S3 does not support weixin
+// IM configuration: feishu | telegram | discord | weixin
 #ifndef IM_SECRET_CHANNEL_MODE
 #define IM_SECRET_CHANNEL_MODE      "feishu"
 #endif
@@ -64,10 +62,11 @@ extern "C" {
 /* ---------------------------------------------------------------------------
  * ACP Gateway configuration (openclaw direct connection)
  * Override in tuya_app_config_secrets.h for environment-specific values.
+ * Runtime overrides: MCP tools openclaw_gateway_set / openclaw_gateway_get
  * --------------------------------------------------------------------------- */
 
 #ifndef OPENCLAW_GATEWAY_HOST
-#define OPENCLAW_GATEWAY_HOST    "192.168.1.1"   /* Linux machine LAN IP */
+#define OPENCLAW_GATEWAY_HOST    "192.168.1.1"
 #endif
 
 #ifndef OPENCLAW_GATEWAY_PORT
@@ -75,11 +74,11 @@ extern "C" {
 #endif
 
 #ifndef OPENCLAW_GATEWAY_TOKEN
-#define OPENCLAW_GATEWAY_TOKEN   ""              /* Set in tuya_app_config_secrets.h */
+#define OPENCLAW_GATEWAY_TOKEN   ""
 #endif
 
 #ifndef DUCKYCLAW_DEVICE_ID
-#define DUCKYCLAW_DEVICE_ID       "duckyclaw-001" /* Unique per device, e.g. MAC address */
+#define DUCKYCLAW_DEVICE_ID       "duckyclaw-001"
 #endif
 
 #ifdef __cplusplus

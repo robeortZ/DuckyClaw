@@ -13,24 +13,31 @@ get_filename_component(APP_NAME ${APP_PATH} NAME)
 aux_source_directory(${APP_PATH}/src APP_SRCS)
 aux_source_directory(${APP_PATH}/tools APP_SRCS)
 aux_source_directory(${APP_PATH}/cron_service APP_SRCS)
+aux_source_directory(${APP_PATH}/todo_service APP_SRCS)
 aux_source_directory(${APP_PATH}/heartbeat APP_SRCS)
 aux_source_directory(${APP_PATH}/memory APP_SRCS)
 aux_source_directory(${APP_PATH}/gateway APP_SRCS)
 aux_source_directory(${APP_PATH}/skills APP_SRCS)
 aux_source_directory(${APP_PATH}/agent APP_SRCS)
-
+aux_source_directory(${APP_PATH}/display APP_SRCS)
+aux_source_directory(${APP_PATH}/display/image APP_SRCS)
+aux_source_directory(${APP_PATH}/dev_config APP_SRCS)
 # APP_INC
 set(APP_INC
     ${APP_PATH}
+    ${APP_PATH}/src
     ${APP_PATH}/include
     ${APP_PATH}/tools
     ${APP_PATH}/cron_service
+    ${APP_PATH}/todo_service
     ${APP_PATH}/heartbeat
     ${APP_PATH}/memory
     ${APP_PATH}/gateway
     ${APP_PATH}/skills
     ${APP_PATH}/agent
     ${APP_PATH}/ai_components/assets/include
+    ${APP_PATH}/display
+    ${APP_PATH}/dev_config
 )
 
 ########################################

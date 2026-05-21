@@ -29,6 +29,7 @@
  */
 
 #include "acp_client.h"
+#include "openclaw_gateway_cfg.h"
 #include "tool_files.h"
 #include "tuya_app_config.h"
 #include "app_im.h"
@@ -118,6 +119,7 @@ typedef struct {
     char           pending_channel[16];
     char           pending_chat_id[96];
 
+    bool         reconnect_requested;
     bool         stop_requested;
 } acp_ctx_t;
 
@@ -467,8 +469,12 @@ static void __extract_session_key(cJSON *hello_payload, char *session_key, size_
  * @param[in]  sk_size     Size of session_key buffer.
  * @return OPRT_OK on success.
  */
-static OPERATE_RET __acp_connect(int fd, char *session_key, size_t sk_size)
+static OPERATE_RET __acp_connect(int fd, char *session_key, size_t sk_size, const char *auth_token)
 {
+    if (!auth_token || auth_token[0] == '\0') {
+        return OPRT_INVALID_PARM;
+    }
+
     /* Build connect request */
     cJSON *root   = cJSON_CreateObject();
     cJSON *params = cJSON_CreateObject();
@@ -497,7 +503,7 @@ static OPERATE_RET __acp_connect(int fd, char *session_key, size_t sk_size)
     cJSON_AddStringToObject(client, "displayName",  DUCKYCLAW_DEVICE_ID);
     cJSON_AddItemToObject(params, "client", client);
 
-    cJSON_AddStringToObject(auth, "token", OPENCLAW_GATEWAY_TOKEN);
+    cJSON_AddStringToObject(auth, "token", auth_token);
     cJSON_AddItemToObject(params, "auth", auth);
 
     cJSON_AddStringToObject(params, "role", "operator");
@@ -1306,13 +1312,20 @@ static void __acp_dispatch(const char *text, size_t text_len)
 static OPERATE_RET __connect_and_handshake(void)
 {
     TUYA_IP_ADDR_T ip_addr = 0;
+    char           host_buf[OPENCLAW_GATEWAY_HOST_MAX];
+    char           token_buf[OPENCLAW_GATEWAY_TOKEN_MAX];
+    uint16_t       port = 0;
+
+    openclaw_gateway_cfg_get_host(host_buf, sizeof(host_buf));
+    openclaw_gateway_cfg_get_token(token_buf, sizeof(token_buf));
+    port = openclaw_gateway_cfg_get_port();
 
     /* Resolve host – try str2addr first (works for dotted-decimal IPs) */
-    ip_addr = tal_net_str2addr(OPENCLAW_GATEWAY_HOST);
+    ip_addr = tal_net_str2addr(host_buf);
     if (ip_addr == 0) {
-        OPERATE_RET rt = tal_net_gethostbyname(OPENCLAW_GATEWAY_HOST, &ip_addr);
-        if (rt != OPRT_OK || ip_addr == 0) {
-            PR_ERR("acp dns resolve failed host=%s", OPENCLAW_GATEWAY_HOST);
+        OPERATE_RET rt_dns = tal_net_gethostbyname(host_buf, &ip_addr);
+        if (rt_dns != OPRT_OK || ip_addr == 0) {
+            PR_ERR("acp dns resolve failed host=%s", host_buf);
             return OPRT_NETWORK_ERROR;
         }
     }
@@ -1323,23 +1336,23 @@ static OPERATE_RET __connect_and_handshake(void)
         return OPRT_NETWORK_ERROR;
     }
 
-    OPERATE_RET rt = tal_net_connect(fd, ip_addr, OPENCLAW_GATEWAY_PORT);
+    OPERATE_RET rt = tal_net_connect(fd, ip_addr, port);
     if (rt != OPRT_OK) {
         PR_ERR("acp tcp connect failed rt=%d host=%s port=%u",
-               rt, OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+               rt, host_buf, (unsigned)port);
         tal_net_close(fd);
         return rt;
     }
     PR_INFO("acp tcp connected fd=%d host=%s:%u",
-            fd, OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+            fd, host_buf, (unsigned)port);
 
-    rt = __ws_upgrade(fd, OPENCLAW_GATEWAY_HOST, OPENCLAW_GATEWAY_PORT);
+    rt = __ws_upgrade(fd, host_buf, port);
     if (rt != OPRT_OK) {
         tal_net_close(fd);
         return rt;
     }
 
-    rt = __acp_connect(fd, s_ctx.session_key, sizeof(s_ctx.session_key));
+    rt = __acp_connect(fd, s_ctx.session_key, sizeof(s_ctx.session_key), token_buf);
     if (rt != OPRT_OK) {
         tal_net_close(fd);
         return rt;
@@ -1388,6 +1401,21 @@ static void acp_client_task(void *arg)
     PR_INFO("acp client task started");
 
     while (!s_ctx.stop_requested) {
+        bool do_reconnect = false;
+
+        tal_mutex_lock(s_ctx.state_mutex);
+        if (s_ctx.reconnect_requested) {
+            s_ctx.reconnect_requested = false;
+            do_reconnect = true;
+        }
+        tal_mutex_unlock(s_ctx.state_mutex);
+        if (do_reconnect) {
+            PR_NOTICE("acp: reconnect requested (gateway config changed)");
+            __disconnect();
+            tal_system_sleep(200);
+            continue;
+        }
+
         tal_mutex_lock(s_ctx.state_mutex);
         bool recv_requested = s_ctx.recv_requested;
         uint32_t recv_started_ms = s_ctx.recv_started_ms;
@@ -1594,8 +1622,12 @@ OPERATE_RET __acp_client_init_evt_cb(void *data)
     }
 #endif
 
-    PR_INFO("acp client init ok host=%s port=%u",
-            OPENCLAW_GATEWAY_HOST, (unsigned)OPENCLAW_GATEWAY_PORT);
+    {
+        char ih[OPENCLAW_GATEWAY_HOST_MAX];
+        openclaw_gateway_cfg_get_host(ih, sizeof(ih));
+        PR_INFO("acp client init ok host=%s port=%u",
+                ih, (unsigned)openclaw_gateway_cfg_get_port());
+    }
     return OPRT_OK;
 }
 
@@ -1724,4 +1756,14 @@ OPERATE_RET acp_client_stop(void)
 bool acp_client_is_connected(void)
 {
     return (s_ctx.state == ACP_STATE_CONNECTED) ? TRUE : FALSE;
+}
+
+void acp_client_request_reconnect(void)
+{
+    tal_mutex_lock(s_ctx.state_mutex);
+    s_ctx.reconnect_requested = true;
+    tal_mutex_unlock(s_ctx.state_mutex);
+    if (s_ctx.recv_sem) {
+        (void)tal_semaphore_post(s_ctx.recv_sem);
+    }
 }

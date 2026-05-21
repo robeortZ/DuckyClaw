@@ -85,6 +85,19 @@ typedef struct {
     AI_MUSIC_SRC_T           *src_array;
 }AI_AUDIO_MUSIC_T;
 
+/** UI metadata for the current playlist item (cached when ai_audio_play_music runs). */
+typedef struct {
+    const char *song_name;
+    const char *artist;
+    const char *img_url;
+} AI_AUDIO_MUSIC_UI_META_T;
+
+typedef enum {
+    AI_AUDIO_MUSIC_UI_IDLE = 0,
+    AI_AUDIO_MUSIC_UI_PLAYING,
+    AI_AUDIO_MUSIC_UI_PAUSED,
+} AI_AUDIO_MUSIC_UI_STATE_E;
+
 typedef enum {
     AI_HTTP_METHOD_GET,
     AI_HTTP_METHOD_POST,
@@ -169,6 +182,29 @@ OPERATE_RET ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_STATE_E state, AI_AUDIO
 @return OPERATE_RET Operation result
 */
 OPERATE_RET ai_audio_play_music(AI_AUDIO_MUSIC_T *music);
+
+/**
+@brief Get cached song/artist/cover URL for the current playlist index
+@param[out] meta Pointers reference internal cache until the next ai_audio_play_music or player deinit
+@return OPRT_OK on success, OPRT_INVALID_PARM if meta is NULL
+*/
+OPERATE_RET ai_audio_player_get_current_music_meta(AI_AUDIO_MUSIC_UI_META_T *meta);
+
+/**
+@brief Background music player UI state for play/pause icon
+@return Idle / playing / paused
+*/
+AI_AUDIO_MUSIC_UI_STATE_E ai_audio_player_music_ui_state(void);
+
+/**
+@brief Toggle background music pause (does not clear playlist; unlike voice "stop")
+@param[in] pause TRUE to pause, FALSE to resume
+@return OPERATE_RET from player layer
+*/
+OPERATE_RET ai_audio_player_music_pause_set(bool pause);
+
+OPERATE_RET ai_audio_player_music_skip_prev(void);
+OPERATE_RET ai_audio_player_music_skip_next(void);
 
 /**
 @brief Stop all audio players

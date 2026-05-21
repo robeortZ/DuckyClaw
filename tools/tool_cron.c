@@ -58,7 +58,7 @@ static void __to_local_tm(int64_t epoch, POSIX_TM_S *tm_out,
 }
 
 /**
- * __local_datetime_to_epoch - Convert a local broken-down datetime to UTC epoch.
+ * tool_cron_local_datetime_to_epoch - Convert a local broken-down datetime to UTC epoch.
  *
  * The device's cloud-synced timezone offset is applied via
  * tal_time_get_time_zone_seconds() so no timezone knowledge is required from
@@ -72,8 +72,8 @@ static void __to_local_tm(int64_t epoch, POSIX_TM_S *tm_out,
  * @second: Second 0-59
  * Returns UTC epoch (int64_t), or -1 on invalid input.
  */
-static int64_t __local_datetime_to_epoch(int year, int month, int day,
-                                         int hour, int minute, int second)
+int64_t tool_cron_local_datetime_to_epoch(int year, int month, int day, int hour, int minute,
+                                          int second)
 {
     /* Basic range validation */
     if (year < 1970 || month < 1 || month > 12 ||
@@ -142,7 +142,7 @@ static OPERATE_RET __resolve_local_datetime_to_epoch(int year, int month, int da
         if (day   <= 0)   day   = tm_now.tm_mday;
     }
 
-    int64_t epoch = __local_datetime_to_epoch(year, month, day, hour, minute, second);
+    int64_t epoch = tool_cron_local_datetime_to_epoch(year, month, day, hour, minute, second);
     if (epoch < 0) {
         if (result && result_size > 0) {
             snprintf(result, result_size,
@@ -329,6 +329,23 @@ static OPERATE_RET __tool_cron_add(const MCP_PROPERTY_LIST_T *properties,
             __get_int_prop(properties, "month",  &month);
             __get_int_prop(properties, "day",    &day);
             __get_int_prop(properties, "second", &second);
+
+            /* Fill missing date fields from current local time */
+            if (year < 1970 || month <= 0 || day <= 0) {
+                TIME_T now_t = tal_time_get_posix();
+                POSIX_TM_S tm_now;
+                memset(&tm_now, 0, sizeof(tm_now));
+                tal_time_get_local_time_custom(now_t, &tm_now);
+                if (year < 1970) {
+                    year = tm_now.tm_year + 1900;
+                }
+                if (month <= 0) {
+                    month = tm_now.tm_mon + 1;
+                }
+                if (day <= 0) {
+                    day = tm_now.tm_mday;
+                }
+            }
 
             if (__resolve_local_datetime_to_epoch(year, month, day,
                                                   hour, minute, second,

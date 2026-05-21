@@ -61,14 +61,22 @@ void acp_client_set_reply_cb(acp_reply_cb_t cb, void *user_data);
 /**
  * @brief Initialise the ACP client and start the background task.
  *
- * Reads connection parameters from OPENCLAW_GATEWAY_HOST, OPENCLAW_GATEWAY_PORT,
- * OPENCLAW_GATEWAY_TOKEN, and DUCKYCLAW_DEVICE_ID (all defined in tuya_app_config.h).
+ * Reads connection parameters from tal_kv (see openclaw_gateway_cfg) when set,
+ * otherwise OPENCLAW_GATEWAY_HOST, OPENCLAW_GATEWAY_PORT, OPENCLAW_GATEWAY_TOKEN,
+ * and DUCKYCLAW_DEVICE_ID from tuya_app_config.h.
  * The background task handles connection, reconnection, and frame I/O.
  *
  * @return OPRT_OK on success, error code on failure.
  * @note Call after the network link is up (e.g., inside EVENT_MQTT_CONNECTED).
  */
 OPERATE_RET acp_client_init(void);
+
+/**
+ * @brief Ask the ACP client to drop the current socket and reconnect using latest config
+ * @return none
+ * @note Safe after acp_client thread exists; wakes recv semaphore
+ */
+void acp_client_request_reconnect(void);
 
 /**
  * @brief Inject a user message into the OpenClaw agent session.

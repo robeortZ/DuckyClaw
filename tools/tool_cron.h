@@ -14,9 +14,24 @@
 #include "tuya_cloud_types.h"
 #include "ai_mcp_server.h"
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Convert local calendar date/time (device TZ) to UTC Unix epoch
+ * @param[in] year Full year
+ * @param[in] month 1-12
+ * @param[in] day 1-31
+ * @param[in] hour 0-23
+ * @param[in] minute 0-59
+ * @param[in] second 0-59
+ * @return Epoch seconds, or -1 if invalid
+ */
+int64_t tool_cron_local_datetime_to_epoch(int year, int month, int day, int hour, int minute,
+                                          int second);
 
 /**
  * @brief Register all cron MCP tools

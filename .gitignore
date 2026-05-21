@@ -4,6 +4,9 @@ dist
 .cache
 compile_commands.json
 tuya_app_config_secrets.h
+.DS_Store
+*.localbak
+display/image/bg2.c
 
 # Prerequisites
 *.d

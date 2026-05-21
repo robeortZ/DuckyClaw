@@ -309,6 +309,7 @@ static OPERATE_RET __ai_chat_mode_open_button(void)
     tdl_button_event_register(sg_button_hdl, TDL_BUTTON_PRESS_DOUBLE_CLICK, __ai_button_function_cb);
     tdl_button_event_register(sg_button_hdl, TDL_BUTTON_LONG_PRESS_START, __ai_button_function_cb);
 
+    PR_DEBUG("ai chat button event registered successfully");
     return rt;
 }
 #endif

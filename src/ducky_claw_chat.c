@@ -18,6 +18,8 @@
 #include "im_api.h"
 #include "tal_log.h"
 
+#include "ducky_custom_ui.h"
+
 #if defined(ENABLE_WIFI) && (ENABLE_WIFI == 1)
 #include "tkl_wifi.h"
 #endif
@@ -271,6 +273,9 @@ OPERATE_RET ducky_claw_chat_init(void)
 {
     OPERATE_RET rt = OPRT_OK;
 
+    #if defined(ENABLE_AI_CHAT_CUSTOM_UI) && (ENABLE_AI_CHAT_CUSTOM_UI == 1)
+    TUYA_CALL_ERR_RETURN(ducky_custom_ui_register());
+    #endif
     AI_CHAT_MODE_CFG_T ai_chat_cfg = {
         .default_mode = AI_CHAT_MODE_WAKEUP,
         .default_vol  = 70,

@@ -24,17 +24,41 @@
 #include "ai_user_event.h"
 #include "ai_agent.h"
 #include "ai_audio_player.h"
+#include "tal_workq_service.h"
+#include "tal_system.h"
+
+#include <string.h>
+
 /***********************************************************
 ************************macro define************************
 ***********************************************************/
+#define AI_MUSIC_META_CAP 32
+/** Poll interval while waiting for foreground (TTS) player to finish decoding */
+#define PENDING_MUSIC_FG_POLL_MS  200U
+/** Max polls (~50s) then drop deferred music */
+#define PENDING_MUSIC_FG_MAX_POLL 250U
+/** Brief pause after FG idle before starting BG HTTPS (reduce overlap with stack/teardown) */
+#define PENDING_MUSIC_POST_FG_DELAY_MS 250U
 
 /***********************************************************
 ***********************typedef define***********************
 ***********************************************************/
+typedef struct {
+    char *song_name;
+    char *artist;
+    char *img_url;
+} __music_meta_slot_t;
 
 /***********************************************************
 ********************function declaration********************
 ***********************************************************/
+static char *__dup_str_opt(const char *s);
+static void __music_meta_clear(void);
+static void __music_struct_free(AI_AUDIO_MUSIC_T *music);
+static AI_AUDIO_MUSIC_T *__music_struct_dup(const AI_AUDIO_MUSIC_T *src);
+static OPERATE_RET __ai_audio_play_music_impl(AI_AUDIO_MUSIC_T *music);
+static void __pending_music_play_after_tts(void);
+static void __pending_music_deferred_kick(void *data);
 
 /***********************************************************
 ***********************variable define**********************
@@ -47,9 +71,131 @@ static AI_PLAYLIST_HANDLE __s_tone_playlist = NULL;
 static AI_PLAYER_HANDLE __s_music_player = NULL;
 static AI_PLAYLIST_HANDLE __s_music_playlist = NULL;
 static AI_PLAYER_ALERT_CUSTOM_CB __s_alert_custom_cb = NULL;
+static __music_meta_slot_t s_music_meta[AI_MUSIC_META_CAP];
+static uint32_t s_music_meta_cnt;
+/** Deferred playlist when skill sets has_tts (avoid concurrent HTTPS with TTS) */
+static AI_AUDIO_MUSIC_T *s_pending_music = NULL;
+static uint32_t          s_pending_fg_wait_attempt;
+static DELAYED_WORK_HANDLE s_pending_music_delayed = NULL;
+
 /***********************************************************
 ***********************function define**********************
 ***********************************************************/
+/**
+ * @brief Free a duplicated AI_AUDIO_MUSIC_T and nested URL strings
+ * @param[in] music Music struct or NULL
+ * @return none
+ */
+static void __music_struct_free(AI_AUDIO_MUSIC_T *music)
+{
+    int i;
+
+    if (music == NULL) {
+        return;
+    }
+    if (music->src_array != NULL) {
+        for (i = 0; i < music->src_cnt; i++) {
+            AI_MUSIC_SRC_T *s = &music->src_array[i];
+
+            if (s->url != NULL) {
+                tal_free(s->url);
+            }
+            if (s->artist != NULL) {
+                tal_free(s->artist);
+            }
+            if (s->song_name != NULL) {
+                tal_free(s->song_name);
+            }
+            if (s->audio_id != NULL) {
+                tal_free(s->audio_id);
+            }
+            if (s->img_url != NULL) {
+                tal_free(s->img_url);
+            }
+        }
+        tal_free(music->src_array);
+    }
+    tal_free(music);
+}
+
+/**
+ * @brief Deep-copy music struct for deferred playback after TTS
+ * @param[in] src Source structure from skill parser
+ * @return Copy or NULL on OOM
+ */
+static AI_AUDIO_MUSIC_T *__music_struct_dup(const AI_AUDIO_MUSIC_T *src)
+{
+    AI_AUDIO_MUSIC_T *dst;
+    int                 i;
+
+    if (src == NULL) {
+        return NULL;
+    }
+    dst = (AI_AUDIO_MUSIC_T *)tal_malloc(sizeof(AI_AUDIO_MUSIC_T));
+    if (dst == NULL) {
+        return NULL;
+    }
+    memcpy(dst, src, sizeof(AI_AUDIO_MUSIC_T));
+    dst->src_array = NULL;
+    if (src->src_cnt <= 0) {
+        return dst;
+    }
+    dst->src_array = (AI_MUSIC_SRC_T *)tal_malloc(sizeof(AI_MUSIC_SRC_T) * (size_t)src->src_cnt);
+    if (dst->src_array == NULL) {
+        tal_free(dst);
+        return NULL;
+    }
+    memset(dst->src_array, 0, sizeof(AI_MUSIC_SRC_T) * (size_t)src->src_cnt);
+    for (i = 0; i < src->src_cnt; i++) {
+        AI_MUSIC_SRC_T *ds = &dst->src_array[i];
+        const AI_MUSIC_SRC_T *ss = &src->src_array[i];
+
+        memcpy(ds, ss, sizeof(AI_MUSIC_SRC_T));
+        ds->url = __dup_str_opt(ss->url);
+        ds->artist = __dup_str_opt(ss->artist);
+        ds->song_name = __dup_str_opt(ss->song_name);
+        ds->audio_id = __dup_str_opt(ss->audio_id);
+        ds->img_url = __dup_str_opt(ss->img_url);
+    }
+    return dst;
+}
+
+static char *__dup_str_opt(const char *s)
+{
+    size_t n;
+    char *p;
+
+    if (s == NULL) {
+        return NULL;
+    }
+    n = strlen(s) + 1;
+    p = (char *)tal_malloc(n);
+    if (p == NULL) {
+        return NULL;
+    }
+    memcpy(p, s, n);
+    return p;
+}
+
+static void __music_meta_clear(void)
+{
+    uint32_t i;
+
+    for (i = 0; i < s_music_meta_cnt; i++) {
+        if (s_music_meta[i].song_name) {
+            tal_free(s_music_meta[i].song_name);
+        }
+        if (s_music_meta[i].artist) {
+            tal_free(s_music_meta[i].artist);
+        }
+        if (s_music_meta[i].img_url) {
+            tal_free(s_music_meta[i].img_url);
+        }
+        memset(&s_music_meta[i], 0, sizeof(s_music_meta[i]));
+    }
+    s_music_meta_cnt = 0;
+}
+
 #if defined(AI_PLAYER_ALERT_SOURCE_LOCAL) && (AI_PLAYER_ALERT_SOURCE_LOCAL == 1)
 
 OPERATE_RET __player_local_alert(AI_AUDIO_ALERT_TYPE_E type)
@@ -182,7 +328,8 @@ static OPERATE_RET __player_event(void *data)
         ai_user_event_notify(AI_USER_EVT_PLAY_CTL_PLAY, NULL);
     } else if (event->state == AI_PLAYER_PAUSED) {
         PR_DEBUG("audio player -> pause event");
-        ai_user_event_notify(AI_USER_EVT_PLAY_CTL_PAUSE, NULL);
+        /* Do not notify AI_USER_EVT_PLAY_CTL_PAUSE: ai_chat_main stops BG player and
+         * clears the playlist on that event. UI/voice soft pause must preserve the queue. */
     }
     
     return rt;
@@ -215,6 +362,8 @@ OPERATE_RET ai_audio_player_init(void)
     /* Player state */
     TUYA_CALL_ERR_GOTO(tal_event_subscribe(EVENT_AI_PLAYER_STATE, "ai_player", __player_event, SUBSCRIBE_TYPE_NORMAL), __error);
 
+    TUYA_CALL_ERR_GOTO(tal_workq_init_delayed(WORKQ_SYSTEM, __pending_music_deferred_kick, NULL, &s_pending_music_delayed), __error);
+
     return rt;
 
 __error:
@@ -230,6 +379,15 @@ __error:
 OPERATE_RET ai_audio_player_deinit(void)
 {
     OPERATE_RET rt = OPRT_OK;
+
+    __music_meta_clear();
+    if (s_pending_music_delayed != NULL) {
+        tal_workq_cancel_delayed(s_pending_music_delayed);
+        s_pending_music_delayed = NULL;
+    }
+    __music_struct_free(s_pending_music);
+    s_pending_music = NULL;
+    s_pending_fg_wait_attempt = 0;
 
     if (__s_tone_player) {
         TUYA_CALL_ERR_LOG(tuya_ai_player_destroy(__s_tone_player));
@@ -294,27 +452,202 @@ uint8_t ai_audio_player_is_playing(void)
 }
 
 /**
-@brief Play music from playlist
-@param music Pointer to music structure containing playlist
-@return OPERATE_RET Operation result
-*/
-OPERATE_RET ai_audio_play_music(AI_AUDIO_MUSIC_T *music)
+ * @brief Fill playlist and metadata (immediate music start)
+ * @param[in] music Parsed music from skill
+ * @return OPERATE_RET
+ */
+static OPERATE_RET __ai_audio_play_music_impl(AI_AUDIO_MUSIC_T *music)
 {
     OPERATE_RET rt = OPRT_OK;
+    int         n;
+    int         i;
+
     if (music->src_cnt <= 0) {
         PR_ERR("music src cnt is 0");
         return rt;
     }
 
+    __music_meta_clear();
     TUYA_CALL_ERR_LOG(tuya_ai_playlist_clear(__s_music_playlist));
-    for (int i = 0; i < music->src_cnt; i++) {
 
+    n = music->src_cnt;
+    if (n > AI_MUSIC_META_CAP) {
+        n = AI_MUSIC_META_CAP;
+    }
+    for (i = 0; i < n; i++) {
+        s_music_meta[i].song_name = __dup_str_opt(music->src_array[i].song_name);
+        s_music_meta[i].artist = __dup_str_opt(music->src_array[i].artist);
+        s_music_meta[i].img_url = __dup_str_opt(music->src_array[i].img_url);
+    }
+    s_music_meta_cnt = (uint32_t)n;
+
+    for (i = 0; i < music->src_cnt; i++) {
         PR_DEBUG("audio player -> player music url %s", music->src_array[i].url);
         TUYA_CALL_ERR_LOG(tuya_ai_playlist_add(__s_music_playlist, AI_PLAYER_SRC_URL,\
                                                music->src_array[i].url, music->src_array[i].format));
     }
 
     return rt;
+}
+
+/**
+ * @brief Start deferred music after TTS pipeline is idle
+ * @return none
+ */
+static void __pending_music_play_after_tts(void)
+{
+    AI_AUDIO_MUSIC_T *m = s_pending_music;
+
+    if (m == NULL) {
+        return;
+    }
+    s_pending_music = NULL;
+    s_pending_fg_wait_attempt = 0;
+    tal_system_sleep(PENDING_MUSIC_POST_FG_DELAY_MS);
+    if (__ai_audio_play_music_impl(m) != OPRT_OK) {
+        PR_ERR("audio player -> deferred music play failed");
+    }
+    __music_struct_free(m);
+}
+
+/**
+ * @brief Workqueue: wait until foreground player not PLAYING, then start BG music
+ * @param[in] data Unused
+ * @return none
+ */
+static void __pending_music_deferred_kick(void *data)
+{
+    OPERATE_RET rt;
+
+    (void)data;
+    if (s_pending_music == NULL) {
+        return;
+    }
+    if (tuya_ai_player_get_state(__s_tone_player) == AI_PLAYER_PLAYING) {
+        s_pending_fg_wait_attempt++;
+        if (s_pending_fg_wait_attempt >= PENDING_MUSIC_FG_MAX_POLL) {
+            PR_WARN("audio player -> drop pending music (FG still playing)");
+            __music_struct_free(s_pending_music);
+            s_pending_music = NULL;
+            s_pending_fg_wait_attempt = 0;
+            return;
+        }
+        rt = tal_workq_start_delayed(s_pending_music_delayed, PENDING_MUSIC_FG_POLL_MS, LOOP_ONCE);
+        if (rt != OPRT_OK) {
+            PR_ERR("audio player -> pending music reschedule failed %d", rt);
+        }
+        return;
+    }
+    __pending_music_play_after_tts();
+}
+
+/**
+@brief Play music from playlist
+@param music Pointer to music structure containing playlist
+@return OPERATE_RET Operation result
+*/
+OPERATE_RET ai_audio_play_music(AI_AUDIO_MUSIC_T *music)
+{
+    TUYA_CHECK_NULL_RETURN(music, OPRT_INVALID_PARM);
+
+    if (music->src_cnt <= 0) {
+        PR_ERR("music src cnt is 0");
+        return OPRT_OK;
+    }
+
+    if (music->has_tts) {
+        __music_struct_free(s_pending_music);
+        s_pending_music = __music_struct_dup(music);
+        if (s_pending_music == NULL) {
+            PR_ERR("audio player -> defer music dup failed");
+            return OPRT_MALLOC_FAILED;
+        }
+        s_pending_fg_wait_attempt = 0;
+        PR_NOTICE("audio player -> defer music until TTS/FG idle (has_tts)");
+        return OPRT_OK;
+    }
+
+    __music_struct_free(s_pending_music);
+    s_pending_music = NULL;
+    return __ai_audio_play_music_impl(music);
+}
+
+/**
+@brief Get cached UI metadata for the current playlist item
+@param meta Output metadata pointers
+@return OPRT_OK or error
+*/
+OPERATE_RET ai_audio_player_get_current_music_meta(AI_AUDIO_MUSIC_UI_META_T *meta)
+{
+    AI_PLAYLIST_INFO_T info;
+    uint32_t idx;
+
+    TUYA_CHECK_NULL_RETURN(meta, OPRT_INVALID_PARM);
+    memset(meta, 0, sizeof(*meta));
+    memset(&info, 0, sizeof(info));
+
+    if (tuya_ai_playlist_get_info(__s_music_playlist, &info) != OPRT_OK) {
+        return OPRT_COM_ERROR;
+    }
+    if (info.count == 0 || s_music_meta_cnt == 0) {
+        return OPRT_OK;
+    }
+    idx = info.index;
+    if (idx >= s_music_meta_cnt) {
+        idx = s_music_meta_cnt - 1;
+    }
+    meta->song_name = s_music_meta[idx].song_name;
+    meta->artist = s_music_meta[idx].artist;
+    meta->img_url = s_music_meta[idx].img_url;
+    return OPRT_OK;
+}
+
+/**
+@brief Background music player state for UI
+@return Idle / playing / paused
+*/
+AI_AUDIO_MUSIC_UI_STATE_E ai_audio_player_music_ui_state(void)
+{
+    AI_PLAYER_STATE_T s = tuya_ai_player_get_state(__s_music_player);
+
+    if (s == AI_PLAYER_PLAYING) {
+        return AI_AUDIO_MUSIC_UI_PLAYING;
+    }
+    if (s == AI_PLAYER_PAUSED) {
+        return AI_AUDIO_MUSIC_UI_PAUSED;
+    }
+    return AI_AUDIO_MUSIC_UI_IDLE;
+}
+
+/**
+@brief Pause or resume background music without destroying the playlist
+@param pause TRUE to pause
+@return OPERATE_RET
+*/
+OPERATE_RET ai_audio_player_music_pause_set(bool pause)
+{
+    if (pause) {
+        return tuya_ai_player_pause(__s_music_player);
+    }
+    return tuya_ai_player_resume(__s_music_player);
+}
+
+/**
+@brief Skip to previous item in the background playlist
+@return OPERATE_RET
+*/
+OPERATE_RET ai_audio_player_music_skip_prev(void)
+{
+    return tuya_ai_playlist_prev(__s_music_playlist);
+}
+
+/**
+@brief Skip to next item in the background playlist
+@return OPERATE_RET
+*/
+OPERATE_RET ai_audio_player_music_skip_next(void)
+{
+    return tuya_ai_playlist_next(__s_music_playlist);
 }
 
 /**
@@ -393,11 +726,21 @@ OPERATE_RET ai_audio_play_tts_stream(AI_AUDIO_PLAYER_TTS_STATE_E state, AI_AUDIO
         PR_DEBUG("audio player -> tts stream stop");
         TUYA_CALL_ERR_LOG(tuya_ai_player_feed(__s_tone_player, NULL, 0));
         ai_user_event_notify(AI_USER_EVT_TTS_STOP, NULL);
+        if (s_pending_music != NULL) {
+            s_pending_fg_wait_attempt = 0;
+            rt = tal_workq_schedule(WORKQ_SYSTEM, __pending_music_deferred_kick, NULL);
+            if (rt != OPRT_OK) {
+                PR_ERR("audio player -> pending music kick schedule failed %d", rt);
+            }
+        }
         break;
     case AI_AUDIO_PLAYER_TTS_ABORT:
         PR_DEBUG("audio player -> tts stream abort");
         TUYA_CALL_ERR_LOG(tuya_ai_player_feed(__s_tone_player, NULL, 0));
         ai_user_event_notify(AI_USER_EVT_TTS_ABORT, NULL);
+        __music_struct_free(s_pending_music);
+        s_pending_music = NULL;
+        s_pending_fg_wait_attempt = 0;
         break;
     default:
         break;
@@ -421,8 +764,14 @@ OPERATE_RET ai_audio_play_local(char *url, char *song_name, char *artist, int fo
 	PR_DEBUG("audio player -> play local url: %s", url);
     AI_PLAYER_SRC_E src = (strstr(url, "http://") == url || strstr(url, "https://") == url) ?
                            AI_PLAYER_SRC_URL : AI_PLAYER_SRC_FILE;
+    __music_meta_clear();
     TUYA_CALL_ERR_LOG(tuya_ai_playlist_clear(__s_music_playlist));
     TUYA_CALL_ERR_LOG(tuya_ai_playlist_add(__s_music_playlist, src, url, format));
+    if (song_name || artist) {
+        s_music_meta[0].song_name = __dup_str_opt(song_name);
+        s_music_meta[0].artist = __dup_str_opt(artist);
+        s_music_meta_cnt = 1;
+    }
 
     return rt;
 }
@@ -445,10 +794,16 @@ OPERATE_RET ai_audio_player_stop(AI_AUDIO_PLAYER_TYPE_E type)
         TUYA_CALL_ERR_LOG(tuya_ai_player_stop(__s_tone_player));
         break;
     case AI_AUDIO_PLAYER_BG:
+        __music_struct_free(s_pending_music);
+        s_pending_music = NULL;
+        s_pending_fg_wait_attempt = 0;
         TUYA_CALL_ERR_LOG(tuya_ai_playlist_clear(__s_music_playlist));
         TUYA_CALL_ERR_LOG(tuya_ai_player_stop(__s_music_player));
         break;
     case AI_AUDIO_PLAYER_ALL:
+        __music_struct_free(s_pending_music);
+        s_pending_music = NULL;
+        s_pending_fg_wait_attempt = 0;
         TUYA_CALL_ERR_LOG(tuya_ai_playlist_clear(__s_tone_playlist));
         TUYA_CALL_ERR_LOG(tuya_ai_player_stop(__s_tone_player));
         TUYA_CALL_ERR_LOG(tuya_ai_playlist_clear(__s_music_playlist));

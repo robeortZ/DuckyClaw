@@ -133,6 +133,26 @@
     "-> cron_list, find job watch-for-visitor, cron_remove(job_id)\n"        \
     "-> Reply: Watching has stopped.\n"
 
+#define BUILTIN_OPENCLAW_GATEWAY                                               \
+    "# OpenClaw gateway (PC)\n"                                              \
+    "\n"                                                                     \
+    "Configure which OpenClaw ACP WebSocket gateway the device connects to " \
+    "(LAN host, port, auth token).\n"                                        \
+    "\n"                                                                     \
+    "## When to use\n"                                                       \
+    "When the user wants to point DuckyClaw at a different PC, new token, "  \
+    "or port (e.g. after reinstalling OpenClaw or changing Wi-Fi).\n"         \
+    "\n"                                                                     \
+    "## How to use\n"                                                        \
+    "1. Call **openclaw_gateway_get** to show current host, port, and masked token.\n" \
+    "2. Call **openclaw_gateway_set** with any subset:\n"                    \
+    "   - `host`: hostname or IPv4 (empty string = leave unchanged)\n"       \
+    "   - `token`: gateway auth token (empty = leave unchanged)\n"           \
+    "   - `port`: 1–65535, or **0** to leave port unchanged\n"              \
+    "   At least one of host, token, or a non-zero port must be provided.\n" \
+    "3. Settings persist in device KV and survive reboot; ACP reconnects automatically.\n" \
+    "4. Tell the user to ensure the OpenClaw gateway is listening on that host:port.\n"
+
 /* ------------------------------------------------------------------ */
 
 typedef struct {
@@ -141,10 +161,11 @@ typedef struct {
 } builtin_skill_t;
 
 static const builtin_skill_t s_builtins[] = {
-    {"weather",           BUILTIN_WEATHER           },
-    {"daily-briefing",    BUILTIN_DAILY_BRIEFING    },
-    {"skill-creator",     BUILTIN_SKILL_CREATOR     },
-    {"watch-for-visitor", BUILTIN_WATCH_FOR_VISITOR },
+    {"weather",             BUILTIN_WEATHER             },
+    {"daily-briefing",      BUILTIN_DAILY_BRIEFING      },
+    {"skill-creator",       BUILTIN_SKILL_CREATOR       },
+    {"watch-for-visitor",   BUILTIN_WATCH_FOR_VISITOR   },
+    {"openclaw-gateway",   BUILTIN_OPENCLAW_GATEWAY    },
 };
 
 #define NUM_BUILTINS ((int)(sizeof(s_builtins) / sizeof(s_builtins[0])))

@@ -12,12 +12,14 @@
 #include "tool_files.h"
 #include "tool_cron.h"
 #include "tool_openclaw_ctrl.h"
+#include "tool_openclaw_gateway.h"
 #include "cron_service.h"
 #include "heartbeat.h"
 #include "memory_manager.h"
 #include "session_manager.h"
 #include "skill_loader.h"
-
+#include "tool_todo.h"
+#include "todo_service.h"
 #include "tal_api.h"
 
 #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
@@ -64,7 +66,11 @@ static OPERATE_RET __ai_mcp_init(void *data)
     TUYA_CALL_ERR_LOG(tool_files_register());
 
     /* Register cron tools */
-    TUYA_CALL_ERR_LOG(tool_cron_register());
+    TUYA_CALL_ERR_RETURN(tool_cron_register());
+    /* Initialize TODO service (load from file) */
+    TUYA_CALL_ERR_LOG(todo_service_init());
+    /* Register TODO tools */
+    TUYA_CALL_ERR_RETURN(tool_todo_register());
 
     /* Register exec/system tools */
     #if defined(PLATFORM_LINUX) && (PLATFORM_LINUX == 1)
@@ -73,6 +79,8 @@ static OPERATE_RET __ai_mcp_init(void *data)
 
     /* Register OpenClaw/PC control tool */
     TUYA_CALL_ERR_LOG(tool_openclaw_ctrl_register());
+    /* Register OpenClaw gateway host/token/port (IM-configurable via MCP) */
+    TUYA_CALL_ERR_LOG(tool_openclaw_gateway_register());
 
     /* Register hardware peripheral tools */
     #if defined(ENABLE_HARDWARE_MCP) && (ENABLE_HARDWARE_MCP == 1)

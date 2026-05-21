@@ -50,7 +50,7 @@ typedef enum {
  * @brief Cron job definition
  */
 typedef struct {
-    char        id[9];        /**< Auto-generated unique job ID */
+    char        id[9];        /**< Job ID: set by caller or auto-generated if empty */
     char        name[32];     /**< Descriptive name */
     bool        enabled;      /**< Whether the job is active */
     cron_kind_t kind;         /**< Schedule type */
@@ -85,7 +85,7 @@ void cron_service_stop(void);
 
 /**
  * @brief Add a new cron job
- * @param job Job definition (id and next_run will be auto-filled)
+ * @param[in,out] job Job definition; empty id is replaced with a generated id; next_run is computed
  * @return OPERATE_RET OPRT_OK on success
  */
 OPERATE_RET cron_add_job(cron_job_t *job);
