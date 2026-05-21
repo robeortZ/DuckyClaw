@@ -1,10 +1,10 @@
-# DuckyClaw-EPD
+bg# DuckyClaw-EPD
 
 <div align="center">
 
 **[English](./README.md) | [中文]**
 
-![GitHub Repo Banner](https://images.tuyacn.com/fe-static/docs/img/210f532a-0bb1-4ca5-9037-f5488958a709.jpg)
+![GitHub Repo Banner](bg.png)
 
 **Your autonomous AI companion on E-Paper Display hardware.**  
 **你的自主 AI 伴侣，专为电子墨水屏硬件打造。**
